@@ -52,13 +52,30 @@
 
 <body class="min-h-screen font-sans antialiased selection:bg-indigo-500/30 selection:text-indigo-100">
     <nav class="glass-header sticky top-0 z-50">
-        <div class="max-w-[1500px] mx-auto px-4 h-16 flex items-center justify-between gap-4">
+        <div class="max-w-[1500px] mx-auto px-4 min-h-16 py-2 flex items-center justify-between gap-3 flex-wrap">
             <div class="min-w-0">
                 <div class="flex items-center gap-2">
                     <span class="h-2.5 w-2.5 rounded-full bg-emerald-500 shadow-[0_0_12px_rgba(16,185,129,0.65)]"></span>
                     <h1 class="text-sm sm:text-base font-semibold text-white tracking-tight">Reviews 7 / 8 / 9</h1>
                 </div>
                 <p id="last-updated" class="text-[10px] text-zinc-500 mt-0.5 font-mono">Sin actualizar</p>
+            </div>
+            <div class="order-last w-full sm:order-none sm:w-auto flex items-center gap-2 overflow-x-auto">
+                <div class="h-9 px-3 rounded-xl bg-indigo-500/10 border border-indigo-400/20 flex items-center gap-2 shrink-0">
+                    <span class="text-[10px] uppercase tracking-[0.12em] text-indigo-300 font-bold">7</span>
+                    <span id="count-7" class="text-sm font-semibold text-white font-mono">0</span>
+                    <span class="hidden md:inline text-[10px] text-zinc-500">Procesando</span>
+                </div>
+                <div class="h-9 px-3 rounded-xl bg-emerald-500/10 border border-emerald-400/20 flex items-center gap-2 shrink-0">
+                    <span class="text-[10px] uppercase tracking-[0.12em] text-emerald-300 font-bold">8</span>
+                    <span id="count-8" class="text-sm font-semibold text-white font-mono">0</span>
+                    <span class="hidden md:inline text-[10px] text-zinc-500">Validado</span>
+                </div>
+                <div class="h-9 px-3 rounded-xl bg-amber-500/10 border border-amber-400/20 flex items-center gap-2 shrink-0">
+                    <span class="text-[10px] uppercase tracking-[0.12em] text-amber-300 font-bold">9</span>
+                    <span id="count-9" class="text-sm font-semibold text-white font-mono">0</span>
+                    <span class="hidden md:inline text-[10px] text-zinc-500">Registrar</span>
+                </div>
             </div>
             <div class="flex items-center gap-2 shrink-0">
                 <a href="/dash"
@@ -68,63 +85,72 @@
                 </a>
                 <button id="btn-refresh" type="button"
                     class="h-9 px-3 rounded-full bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold transition-colors flex items-center gap-2 shadow-[0_0_18px_rgba(79,70,229,0.25)]">
-                    <i class="fa-solid fa-rotate-right text-[11px]"></i>
-                    <span>Actualizar</span>
+                    <i id="refresh-icon" class="fa-solid fa-rotate-right text-[11px]"></i>
+                    <span id="refresh-spinner"
+                        class="hidden h-3.5 w-3.5 rounded-full border-2 border-white/80 border-t-transparent animate-spin"></span>
+                    <span id="refresh-label">Actualizar</span>
                 </button>
             </div>
         </div>
     </nav>
 
     <main class="max-w-[1500px] mx-auto p-4 md:p-6 space-y-5">
-        <section class="grid grid-cols-1 sm:grid-cols-3 gap-3">
-            <div class="glass-panel rounded-2xl p-4 border-indigo-400/20">
-                <p class="text-[10px] uppercase tracking-[0.18em] text-indigo-300 font-bold">Procesando</p>
-                <div class="mt-2 flex items-end justify-between">
-                    <span id="count-7" class="text-3xl font-semibold text-white font-mono">0</span>
-                    <span class="text-xs text-zinc-500">review 7</span>
-                </div>
-            </div>
-            <div class="glass-panel rounded-2xl p-4 border-emerald-400/20">
-                <p class="text-[10px] uppercase tracking-[0.18em] text-emerald-300 font-bold">Validado</p>
-                <div class="mt-2 flex items-end justify-between">
-                    <span id="count-8" class="text-3xl font-semibold text-white font-mono">0</span>
-                    <span class="text-xs text-zinc-500">review 8</span>
-                </div>
-            </div>
-            <div class="glass-panel rounded-2xl p-4 border-amber-400/20">
-                <p class="text-[10px] uppercase tracking-[0.18em] text-amber-300 font-bold">Registrar</p>
-                <div class="mt-2 flex items-end justify-between">
-                    <span id="count-9" class="text-3xl font-semibold text-white font-mono">0</span>
-                    <span class="text-xs text-zinc-500">review 9</span>
-                </div>
-            </div>
-        </section>
-
         <section class="glass-panel rounded-2xl overflow-hidden">
             <div class="px-4 py-3 border-b border-white/10 flex flex-col md:flex-row md:items-center md:justify-between gap-3">
                 <div>
                     <h2 class="text-sm font-semibold text-white">Resultados filtrados</h2>
                     <p id="summary-text" class="text-[11px] text-zinc-500 mt-0.5">Solo reviewed 7, 8 y 9.</p>
                 </div>
-                <div class="relative w-full md:w-80">
-                    <i class="fa-solid fa-magnifying-glass pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[11px] text-zinc-500"></i>
-                    <input id="search-input" type="text" placeholder="Buscar DNI, email o comentario"
-                        class="w-full h-10 bg-zinc-950/70 border border-white/10 text-xs text-zinc-100 rounded-xl pl-9 pr-3 focus:outline-none focus:border-indigo-400 placeholder:text-zinc-600 transition-colors"
-                        autocomplete="off">
+                <div class="flex flex-col sm:flex-row gap-2 w-full md:w-auto">
+                    <select id="review-filter"
+                        class="h-10 bg-zinc-950/70 border border-white/10 text-xs text-zinc-100 rounded-xl px-3 focus:outline-none focus:border-indigo-400">
+                        <option value="all">Todos review</option>
+                        <option value="7">Review 7</option>
+                        <option value="8">Review 8</option>
+                        <option value="9">Review 9</option>
+                    </select>
+                    <div class="relative w-full md:w-80">
+                        <i class="fa-solid fa-magnifying-glass pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[11px] text-zinc-500"></i>
+                        <input id="search-input" type="text" placeholder="Buscar DNI, email o comentario"
+                            class="w-full h-10 bg-zinc-950/70 border border-white/10 text-xs text-zinc-100 rounded-xl pl-9 pr-3 focus:outline-none focus:border-indigo-400 placeholder:text-zinc-600 transition-colors"
+                            autocomplete="off">
+                    </div>
                 </div>
             </div>
 
-            <div id="loading-state" class="p-8 text-center text-sm text-zinc-400">
-                <span class="inline-block h-4 w-4 border-2 border-indigo-400/70 border-t-transparent rounded-full animate-spin mr-2 align-[-2px]"></span>
-                Cargando reviews...
-            </div>
+            <div id="loading-state" class="hidden"></div>
             <div id="error-state" class="hidden p-8 text-center text-sm text-rose-300"></div>
             <div id="empty-state" class="hidden p-8 text-center text-sm text-zinc-500">No hay resultados en review 7, 8 o 9.</div>
 
+            <div id="selection-toolbar"
+                class="px-4 py-2 border-b border-white/10 bg-white/[0.02] flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+                <div class="flex items-center gap-3">
+                    <label class="inline-flex items-center gap-2 text-[11px] text-zinc-300">
+                        <input id="select-visible-checkbox" type="checkbox"
+                            class="h-4 w-4 rounded border-white/20 bg-zinc-950 accent-indigo-500">
+                        <span>Seleccionar visibles</span>
+                    </label>
+                    <span id="selected-count" class="text-[11px] text-zinc-500 font-mono">0 seleccionados</span>
+                </div>
+                <div class="flex items-center gap-2">
+                    <button id="btn-clear-selection" type="button"
+                        class="h-8 px-3 rounded-lg bg-white/5 hover:bg-white/10 text-zinc-300 text-[11px] font-semibold border border-white/10 transition-colors">
+                        Limpiar
+                    </button>
+                    <button id="btn-copy-selected" type="button"
+                        class="h-8 px-3 rounded-lg bg-emerald-600 hover:bg-emerald-500 disabled:bg-white/5 disabled:text-zinc-600 text-white text-[11px] font-semibold border border-white/10 transition-colors flex items-center gap-2"
+                        disabled>
+                        <i class="fa-regular fa-copy text-[11px]"></i>
+                        <span>Copiar seleccionados</span>
+                    </button>
+                </div>
+            </div>
+
             <div id="table-wrap" class="hidden overflow-x-auto">
-                <table class="w-full min-w-[1120px] text-left">
+                <table class="w-full min-w-[1180px] text-left">
                     <thead class="bg-white/[0.03] text-[10px] uppercase tracking-[0.14em] text-zinc-500">
                         <tr>
+                            <th class="px-4 py-3 font-semibold">Sel.</th>
                             <th class="px-4 py-3 font-semibold">Copiado</th>
                             <th class="px-4 py-3 font-semibold">Review</th>
                             <th class="px-4 py-3 font-semibold">ID</th>

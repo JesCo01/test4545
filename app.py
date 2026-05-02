@@ -4295,17 +4295,67 @@ def api_new_reviews():
         return jsonify({"error": str(e)}), 500
 
 
+def _bool_from_payload(value):
+    if isinstance(value, bool):
+        return value
+    return str(value or "").strip().lower() in {"1", "true", "yes", "si", "on", "x"}
+
+
+@app.route("/api/new/reviews/copied", methods=["POST"])
+def api_new_reviews_copied_bulk():
+    if not _admin_authorized():
+        return jsonify({"error": "forbidden"}), 403
+
+    data = request.get_json(silent=True) or {}
+    copied = _bool_from_payload(data.get("copied", data.get("value", False)))
+    raw_ids = data.get("ids")
+    if not isinstance(raw_ids, list):
+        return jsonify({"error": "ids debe ser lista"}), 400
+
+    ids = []
+    seen = set()
+    for raw_id in raw_ids:
+        try:
+            rid = int(raw_id)
+        except (TypeError, ValueError):
+            continue
+        if rid <= 0 or rid in seen:
+            continue
+        seen.add(rid)
+        ids.append(rid)
+        if len(ids) >= 5000:
+            break
+
+    if not ids:
+        return jsonify({"error": "ids vacio"}), 400
+
+    try:
+        rows = (
+            Resultado.query
+            .filter(Resultado.id.in_(ids))
+            .filter(Resultado.reviewed.in_((PROCESSING_REVIEWED, VALIDATED_REVIEWED, REGISTER_REVIEWED)))
+            .all()
+        )
+        updated_ids = []
+        for row in rows:
+            extras = _normalize_extra_fields(row.extra_fields or {}, max_fields=0)
+            extras["copied"] = copied
+            row.extra_fields = extras
+            updated_ids.append(row.id)
+        db.session.commit()
+        return jsonify({"status": "ok", "copied": copied, "ids": updated_ids, "count": len(updated_ids)}), 200
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({"error": str(e)}), 500
+
+
 @app.route("/api/new/reviews/<int:rid>/copied", methods=["POST"])
 def api_new_review_copied(rid):
     if not _admin_authorized():
         return jsonify({"error": "forbidden"}), 403
 
     data = request.get_json(silent=True) or {}
-    copied_raw = data.get("copied", data.get("value", False))
-    if isinstance(copied_raw, bool):
-        copied = copied_raw
-    else:
-        copied = str(copied_raw or "").strip().lower() in {"1", "true", "yes", "si", "on", "x"}
+    copied = _bool_from_payload(data.get("copied", data.get("value", False)))
 
     try:
         row = db.session.get(Resultado, rid)

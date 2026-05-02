@@ -17,6 +17,8 @@ const REVIEW_META = {
 
 let allRows = [];
 let searchTerm = "";
+let reviewFilter = "all";
+let selectedIds = new Set();
 let refreshTimer = 0;
 let latestCounts = {};
 let latestPagination = null;
@@ -201,8 +203,62 @@ async function loadRows() {
         .sort((a, b) => Number(b?.id || 0) - Number(a?.id || 0));
 }
 
+function rowMatchesReviewFilter(item) {
+    if (reviewFilter === "all") return true;
+    return String(normalizeReview(item?.reviewed)) === String(reviewFilter);
+}
+
+function getFilteredRows() {
+    const rows = reviewFilter === "all"
+        ? allRows.slice()
+        : allRows.filter(rowMatchesReviewFilter);
+    return searchTerm
+        ? rows.filter((item) => rowSearchText(item).includes(searchTerm))
+        : rows;
+}
+
+function rowId(item) {
+    const id = Number(item?.id);
+    return Number.isFinite(id) ? id : null;
+}
+
+function selectedRows() {
+    return allRows.filter((item) => {
+        const id = rowId(item);
+        return id !== null && selectedIds.has(id);
+    });
+}
+
+function pruneSelectedIds() {
+    const available = new Set(allRows.map(rowId).filter((id) => id !== null));
+    selectedIds = new Set(Array.from(selectedIds).filter((id) => available.has(id)));
+}
+
+function setRowsCopied(ids, copied) {
+    const idSet = new Set(ids.map((id) => Number(id)).filter((id) => Number.isFinite(id)));
+    allRows = allRows.map((item) => {
+        const id = rowId(item);
+        if (id === null || !idSet.has(id)) return item;
+        return {
+            ...item,
+            extra_fields: {
+                ...extra(item),
+                copied,
+            },
+        };
+    });
+}
+
 function setLoading(on) {
-    byId("loading-state")?.classList.toggle("hidden", !on);
+    byId("loading-state")?.classList.add("hidden");
+    const button = byId("btn-refresh");
+    const icon = byId("refresh-icon");
+    const spinner = byId("refresh-spinner");
+    const label = byId("refresh-label");
+    if (button) button.disabled = Boolean(on);
+    if (icon) icon.classList.toggle("hidden", Boolean(on));
+    if (spinner) spinner.classList.toggle("hidden", !on);
+    if (label) label.textContent = on ? "Cargando..." : "Actualizar";
 }
 
 function setError(message) {
@@ -234,18 +290,48 @@ function updateCounters(rows) {
     }
 }
 
+function updateSelectionUi() {
+    const filtered = getFilteredRows();
+    const visibleIds = filtered.map(rowId).filter((id) => id !== null);
+    const selectedVisible = visibleIds.filter((id) => selectedIds.has(id)).length;
+    const selectedTotal = selectedIds.size;
+    const selectedCount = byId("selected-count");
+    const copyButton = byId("btn-copy-selected");
+    const clearButton = byId("btn-clear-selection");
+    const selectVisible = byId("select-visible-checkbox");
+
+    if (selectedCount) selectedCount.textContent = `${selectedTotal} seleccionado(s)`;
+    if (copyButton) copyButton.disabled = selectedTotal === 0;
+    if (clearButton) clearButton.disabled = selectedTotal === 0;
+    if (selectVisible) {
+        selectVisible.disabled = visibleIds.length === 0;
+        selectVisible.checked = visibleIds.length > 0 && selectedVisible === visibleIds.length;
+        selectVisible.indeterminate = selectedVisible > 0 && selectedVisible < visibleIds.length;
+    }
+}
+
+function updateSummaryForFilter(filteredRows) {
+    const summary = byId("summary-text");
+    if (!summary) return;
+    const reviewLabel = reviewFilter === "all" ? "review 7, 8 y 9" : `review ${reviewFilter}`;
+    const totalForFilter = reviewFilter === "all"
+        ? (latestPagination?.total_items ?? allRows.length)
+        : Number(latestCounts[String(reviewFilter)] ?? allRows.filter(rowMatchesReviewFilter).length);
+    const suffix = searchTerm ? " con busqueda" : "";
+    summary.textContent = `${filteredRows.length} visible(s) de ${totalForFilter} en ${reviewLabel}${suffix}.`;
+}
+
 function renderRows() {
     const tbody = byId("results-body");
     const tableWrap = byId("table-wrap");
     const empty = byId("empty-state");
     if (!tbody || !tableWrap || !empty) return;
 
-    const filtered = searchTerm
-        ? allRows.filter((item) => rowSearchText(item).includes(searchTerm))
-        : allRows.slice();
+    const filtered = getFilteredRows();
 
     empty.classList.toggle("hidden", filtered.length > 0);
     tableWrap.classList.toggle("hidden", filtered.length === 0);
+    updateSummaryForFilter(filtered);
 
     tbody.innerHTML = filtered.map((item) => {
         const extras = extra(item);
@@ -258,8 +344,20 @@ function renderRows() {
         const processing = describeProcessing(item);
         const copied = isCopied(item);
         const hasId = Number.isFinite(Number(item?.id));
+        const id = rowId(item);
+        const selected = id !== null && selectedIds.has(id);
         return `
             <tr class="hover:bg-white/[0.035] transition-colors">
+                <td class="px-4 py-3">
+                    <label class="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-white/10 bg-white/[0.03] hover:bg-white/[0.07] transition-colors" title="Seleccionar">
+                        <input type="checkbox"
+                            class="h-4 w-4 rounded border-white/20 bg-zinc-950 accent-indigo-500"
+                            data-action="select-row"
+                            data-id="${escapeHtml(item?.id ?? "")}"
+                            ${selected ? "checked" : ""}
+                            ${hasId ? "" : "disabled"}>
+                    </label>
+                </td>
                 <td class="px-4 py-3">
                     <div class="flex items-center gap-2">
                         <label class="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-white/10 bg-white/[0.03] hover:bg-white/[0.07] transition-colors" title="copied">
@@ -295,6 +393,7 @@ function renderRows() {
             </tr>
         `;
     }).join("");
+    updateSelectionUi();
 }
 
 function findRowById(id) {
@@ -330,6 +429,33 @@ async function saveCopied(id, copied) {
         throw new Error((data && data.error) || `HTTP ${response.status}`);
     }
     setLocalCopied(id, Boolean(data.copied));
+}
+
+async function saveCopiedMany(ids, copied) {
+    const normalizedIds = ids.map((id) => Number(id)).filter((id) => Number.isFinite(id));
+    const response = await fetch("/api/new/reviews/copied", {
+        method: "POST",
+        headers: {
+            ...SKIP_WARNING_HEADER,
+            "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ ids: normalizedIds, copied }),
+    });
+    const data = await response.json().catch(() => null);
+    if (!response.ok || !data || data.status !== "ok") {
+        throw new Error((data && data.error) || `HTTP ${response.status}`);
+    }
+    setRowsCopied(data.ids || normalizedIds, Boolean(data.copied));
+}
+
+function handleRowSelection(event) {
+    const input = event.target.closest?.('[data-action="select-row"]');
+    if (!input) return;
+    const id = Number(input.dataset.id);
+    if (!Number.isFinite(id)) return;
+    if (input.checked) selectedIds.add(id);
+    else selectedIds.delete(id);
+    updateSelectionUi();
 }
 
 async function handleCopiedToggle(event) {
@@ -371,13 +497,45 @@ async function handleCopyClick(event) {
     }
 }
 
-async function refresh() {
-    const button = byId("btn-refresh");
+function handleSelectVisibleChange(event) {
+    const input = event.target;
+    if (!input || input.id !== "select-visible-checkbox") return;
+    const visibleIds = getFilteredRows().map(rowId).filter((id) => id !== null);
+    if (input.checked) {
+        visibleIds.forEach((id) => selectedIds.add(id));
+    } else {
+        visibleIds.forEach((id) => selectedIds.delete(id));
+    }
+    renderRows();
+}
+
+function clearSelection() {
+    selectedIds.clear();
+    renderRows();
+}
+
+async function copySelectedRows() {
+    const rows = selectedRows();
+    if (!rows.length) return;
+    const button = byId("btn-copy-selected");
     if (button) button.disabled = true;
+    try {
+        await copyText(rows.map(copyLineForItem).join("\n"));
+        await saveCopiedMany(rows.map((item) => item.id), true);
+        renderRows();
+    } catch (error) {
+        setError(`No se pudo copiar seleccionados: ${error?.message || error}`);
+    } finally {
+        updateSelectionUi();
+    }
+}
+
+async function refresh() {
     setError("");
     setLoading(true);
     try {
         allRows = await loadRows();
+        pruneSelectedIds();
         updateCounters(allRows);
         renderRows();
         const updated = byId("last-updated");
@@ -386,17 +544,25 @@ async function refresh() {
         setError(`No se pudo cargar reviews 7/8/9: ${error?.message || error}`);
     } finally {
         setLoading(false);
-        if (button) button.disabled = false;
     }
 }
 
 function bind() {
     byId("btn-refresh")?.addEventListener("click", refresh);
+    byId("review-filter")?.addEventListener("change", (event) => {
+        const value = String(event.target.value || "all");
+        reviewFilter = value === "all" || REVIEW_STATES.includes(Number(value)) ? value : "all";
+        renderRows();
+    });
     byId("search-input")?.addEventListener("input", (event) => {
         searchTerm = String(event.target.value || "").trim().toLowerCase();
         renderRows();
     });
+    byId("select-visible-checkbox")?.addEventListener("change", handleSelectVisibleChange);
+    byId("btn-clear-selection")?.addEventListener("click", clearSelection);
+    byId("btn-copy-selected")?.addEventListener("click", copySelectedRows);
     byId("results-body")?.addEventListener("change", handleCopiedToggle);
+    byId("results-body")?.addEventListener("change", handleRowSelection);
     byId("results-body")?.addEventListener("click", handleCopyClick);
 }
 
